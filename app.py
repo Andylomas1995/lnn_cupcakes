@@ -354,9 +354,9 @@ elif page == "Total Cost":
 
     st.metric("Grand total", f"£{total:.2f}")
     st.metric("Cost per cupcake", f"£{cost_per_cupcake:.2f}")
-# ---------- Page: Settings ----------
+# ---------- Page: Settings (Function Version) ----------
 
-elif page == "Settings":
+def settings_page():
     st.subheader("Settings")
 
     updated_prices = prices.copy()
@@ -499,12 +499,14 @@ elif page == "Settings":
             bc_misc.pop(i)
             save_buttercream_misc(bc_misc)
             st.experimental_rerun()
+            return
 
     # ADD NEW BUTTERCREAM MISC ITEM
     if st.button("Add buttercream misc item"):
         bc_misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
         save_buttercream_misc(bc_misc)
         st.experimental_rerun()
+        return
 
     # ------------------------------
     # GENERAL MISC ITEMS
@@ -558,12 +560,14 @@ elif page == "Settings":
             misc.pop(i)
             save_misc(misc)
             st.experimental_rerun()
+            return
 
     # ADD NEW GENERAL MISC ITEM
     if st.button("Add misc item"):
         misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
         save_misc(misc)
         st.experimental_rerun()
+        return
 
     # ------------------------------
     # SAVE ALL SETTINGS
@@ -573,3 +577,9 @@ elif page == "Settings":
         save_buttercream_misc(bc_misc)
         save_misc(misc)
         st.success("Settings saved.")
+
+
+# Call the function when needed
+if page == "Settings":
+    settings_page()
+
