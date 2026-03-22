@@ -21,8 +21,8 @@ CUPCAKE_RECIPE = {
     "vanilla": {"label": "Vanilla extract", "amount": 1, "unit": "tsp"}
 }
 
+# Your 24‑cup batch scaled to 12
 BUTTERCREAM_RECIPE = {
-    # scaled from your 24-cup batch to 12
     "butter": {"label": "Unsalted butter", "amount": 226, "unit": "g"},
     "icing_sugar": {"label": "Icing sugar", "amount": 360, "unit": "g"},
     "vanilla": {"label": "Vanilla extract", "amount": 1, "unit": "tbsp"},
@@ -198,7 +198,6 @@ if page == "Cupcake":
 
     rows = []
     total_cost = 0.0
-    missing_cost = False
 
     cupcake_prices = prices.get("cupcake", {})
 
@@ -215,7 +214,6 @@ if page == "Cupcake":
 
         if cost is None:
             cost_display = "—"
-            missing_cost = True
         else:
             cost_display = f"£{cost:.2f}"
             total_cost += cost
@@ -239,7 +237,6 @@ elif page == "Buttercream":
 
     rows = []
     total_cost = 0.0
-    missing_cost = False
 
     buttercream_prices = prices.get("buttercream", {})
 
@@ -256,7 +253,6 @@ elif page == "Buttercream":
 
         if cost is None:
             cost_display = "—"
-            missing_cost = True
         else:
             cost_display = f"£{cost:.2f}"
             total_cost += cost
@@ -292,7 +288,7 @@ elif page == "Buttercream":
             )
         with col3:
             cost = get_cost_from_misc_amount(amount_used, item)
-            if cost:
+            if cost is not None:
                 misc_total += cost
                 st.markdown(f"Cost: **£{cost:.2f}**")
             else:
@@ -331,7 +327,7 @@ elif page == "Misc":
             )
         with col3:
             cost = get_cost_from_misc_amount(amount_used, item)
-            if cost:
+            if cost is not None:
                 misc_total += cost
                 st.markdown(f"Cost: **£{cost:.2f}**")
             else:
@@ -352,7 +348,7 @@ elif page == "Total Cost":
     misc_sub = st.session_state["misc_subtotal"]
 
     total = cupcake_sub + buttercream_sub + buttercream_misc_sub + misc_sub
-    cost_per_cupcake = total / batch_size
+    cost_per_cupcake = total / batch_size if batch_size else 0
 
     rows = [
         {"Section": "Cupcakes", "Subtotal": f"£{cupcake_sub:.2f}"},
@@ -374,8 +370,8 @@ elif page == "Settings":
     st.subheader("Settings")
 
     updated_prices = prices.copy()
-    cupcake_prices = updated_prices["cupcake"]
-    buttercream_prices = updated_prices["buttercream"]
+    cupcake_prices = updated_prices.get("cupcake", {})
+    buttercream_prices = updated_prices.get("buttercream", {})
 
     st.markdown("### Cupcake ingredient prices")
 
@@ -411,6 +407,8 @@ elif page == "Settings":
 
         cupcake_prices[key] = {"price": price, "size": size, "unit": unit}
 
+    updated_prices["cupcake"] = cupcake_prices
+
     st.markdown("### Buttercream ingredient prices")
 
     for key, meta in BUTTERCREAM_RECIPE.items():
@@ -445,6 +443,8 @@ elif page == "Settings":
 
         buttercream_prices[key] = {"price": price, "size": size, "unit": unit}
 
+    updated_prices["buttercream"] = buttercream_prices
+
     st.markdown("### Buttercream misc items")
 
     bc_misc = buttercream_misc_items.copy()
@@ -469,7 +469,7 @@ elif page == "Settings":
 
         bc_misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
 
-        if st.button(f"Delete item {i+1}", key=f"bc_misc_delete_{i}"):
+        if st.button(f"Delete buttercream misc item {i+1}", key=f"bc_misc_delete_{i}"):
             bc_misc.pop(i)
             save_buttercream_misc(bc_misc)
             st.experimental_rerun()
@@ -495,4 +495,22 @@ elif page == "Settings":
         with col2:
             price = st.number_input("Price (£)", min_value=0.0, value=price, step=0.10, key=f"misc_price_{i}")
         with col3:
-            size = st.number_input("Size", min_value
+            size = st.number_input("Size", min_value=0.0, value=size, step=10.0, key=f"misc_size_{i}")
+        with col4:
+            unit = st.selectbox("Unit", ["g", "ml", "count"], index=["g", "ml", "count"].index(unit), key=f"misc_unit_{i}")
+
+        misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
+
+        if st.button(f"Delete misc item {i+1}", key=f"misc_delete_{i}"):
+            misc.pop(i)
+            save_misc(misc)
+            st.experimental_rerun()
+
+    if st.button("Add misc item"):
+        misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
+
+    if st.button("💾 Save all settings"):
+        save_prices(updated_prices)
+        save_buttercream_misc(bc_misc)
+        save_misc(misc)
+        st.success("Settings saved.")
