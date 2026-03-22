@@ -144,21 +144,31 @@ def load_orders():
 def save_orders(orders):
     save_json(ORDERS_FILE, orders)
 
-# ---------- Email helper ----------
+# ---------- Cost helpers ----------
+
+def get_cost_for_ingredient(key, scaled_amount, prices_section):
+    info = prices_section.get(key)
+    if not info:
+        return None
+    price = info.get("price")
+    size = info.get("size")
+    if not price or not size:
+        return None
+    return scaled_amount * (price / size)
+
+def get_cost_from_misc_amount(amount_used, misc_item):
+    price = misc_item.get("price")
+    size = misc_item.get("size")
+    if not price or not size:
+        return None
+    return amount_used * (price / size)
+
+# ---------- Email helper (JSON version) ----------
 
 def send_order_email(order):
     url = "https://api.emailjs.com/api/v1.0/email/send"
 
-    # Pretty order structure for EmailJS
-    order_items = [
-        {
-            "name": item["name"],
-            "boxes": item["boxes"],
-            "qty": item["qty"],
-            "line_total": f"{item['total_price']:.2f}"
-        }
-        for item in order["items"]
-    ]
+    order_json = json.dumps(order["items"], indent=2)
 
     template_params = {
         "to_email": ORDER_TARGET_EMAIL,
@@ -168,8 +178,8 @@ def send_order_email(order):
         "pickup_date": order["pickup_date"],
         "pickup_time": order["pickup_time"],
         "notes": order["notes"] or "None",
-        "order_items": order_items,
-        "total": f"{order['total']:.2f}",
+        "order_json": order_json,
+        "total": f"£{order['total']:.2f}",
     }
 
     payload = {
@@ -187,6 +197,185 @@ def send_order_email(order):
             return False, f"Email failed with status {resp.status_code}: {resp.text}"
     except Exception as e:
         return False, f"Email error: {e}"
+
+# ---------- Settings page (defined early so we can call it later) ----------
+
+def settings_page():
+    st.subheader("Settings")
+
+    prices = load_prices()
+    buttercream_misc_items = load_buttercream_misc()
+    misc_items = load_misc()
+
+    updated_prices = prices.copy()
+    cupcake_prices = updated_prices.get("cupcake", {})
+    buttercream_prices = updated_prices.get("buttercream", {})
+
+    st.markdown("### Cupcake ingredient prices")
+    for key, meta in CUPCAKE_RECIPE.items():
+        label = meta["label"]
+        existing = cupcake_prices.get(key, {})
+        default_unit = existing.get("unit", meta["unit"])
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            price = st.number_input(
+                f"{label} price (£)",
+                min_value=0.0,
+                value=float(existing.get("price", 0.0)),
+                step=0.10,
+                key=f"cupcake_price_{key}"
+            )
+        with col2:
+            size = st.number_input(
+                f"{label} package size",
+                min_value=0.0,
+                value=float(existing.get("size", 0.0)),
+                step=10.0,
+                key=f"cupcake_size_{key}"
+            )
+        with col3:
+            unit = st.selectbox(
+                f"{label} unit",
+                ["g", "ml", "count"],
+                index=["g", "ml", "count"].index(default_unit),
+                key=f"cupcake_unit_{key}"
+            )
+        cupcake_prices[key] = {"price": price, "size": size, "unit": unit}
+    updated_prices["cupcake"] = cupcake_prices
+
+    st.markdown("### Buttercream ingredient prices")
+    for key, meta in BUTTERCREAM_RECIPE.items():
+        label = meta["label"]
+        existing = buttercream_prices.get(key, {})
+        default_unit = existing.get("unit", meta["unit"])
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            price = st.number_input(
+                f"{label} price (£)",
+                min_value=0.0,
+                value=float(existing.get("price", 0.0)),
+                step=0.10,
+                key=f"buttercream_price_{key}"
+            )
+        with col2:
+            size = st.number_input(
+                f"{label} package size",
+                min_value=0.0,
+                value=float(existing.get("size", 0.0)),
+                step=10.0,
+                key=f"buttercream_size_{key}"
+            )
+        with col3:
+            unit = st.selectbox(
+                f"{label} unit",
+                ["g", "ml", "count"],
+                index=["g", "ml", "count"].index(default_unit),
+                key=f"buttercream_unit_{key}"
+            )
+        buttercream_prices[key] = {"price": price, "size": size, "unit": unit}
+    updated_prices["buttercream"] = buttercream_prices
+
+    st.markdown("### Buttercream misc items")
+    bc_misc = buttercream_misc_items.copy()
+    for i, item in enumerate(bc_misc):
+        name = item["name"]
+        price = item["price"]
+        size = item["size"]
+        unit = item["unit"]
+
+        st.markdown(f"**Item {i+1}: {name}**")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            name = st.text_input("Name", value=name, key=f"bc_misc_name_{i}")
+        with col2:
+            price = st.number_input(
+                "Price (£)",
+                min_value=0.0,
+                value=price,
+                step=0.10,
+                key=f"bc_misc_price_{i}"
+            )
+        with col3:
+            size = st.number_input(
+                "Size",
+                min_value=0.0,
+                value=size,
+                step=10.0,
+                key=f"bc_misc_size_{i}"
+            )
+        with col4:
+            unit = st.selectbox(
+                "Unit",
+                ["g", "ml", "count"],
+                index=["g", "ml", "count"].index(unit),
+                key=f"bc_misc_unit_{i}"
+            )
+        bc_misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
+        if st.button(f"Delete buttercream misc item {i+1}", key=f"bc_misc_delete_{i}"):
+            bc_misc.pop(i)
+            save_buttercream_misc(bc_misc)
+            st.rerun()
+            return
+    if st.button("Add buttercream misc item"):
+        bc_misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
+        save_buttercream_misc(bc_misc)
+        st.rerun()
+        return
+
+    st.markdown("### General misc items")
+    misc = misc_items.copy()
+    for i, item in enumerate(misc):
+        name = item["name"]
+        price = item["price"]
+        size = item["size"]
+        unit = item["unit"]
+
+        st.markdown(f"**Item {i+1}: {name}**")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            name = st.text_input("Name", value=name, key=f"misc_name_{i}")
+        with col2:
+            price = st.number_input(
+                "Price (£)",
+                min_value=0.0,
+                value=price,
+                step=0.10,
+                key=f"misc_price_{i}"
+            )
+        with col3:
+            size = st.number_input(
+                "Size",
+                min_value=0.0,
+                value=size,
+                step=10.0,
+                key=f"misc_size_{i}"
+            )
+        with col4:
+            unit = st.selectbox(
+                "Unit",
+                ["g", "ml", "count"],
+                index=["g", "ml", "count"].index(unit),
+                key=f"misc_unit_{i}"
+            )
+        misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
+        if st.button(f"Delete misc item {i+1}", key=f"misc_delete_{i}"):
+            misc.pop(i)
+            save_misc(misc)
+            st.rerun()
+            return
+    if st.button("Add misc item"):
+        misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
+        save_misc(misc)
+        st.rerun()
+        return
+
+    if st.button("💾 Save all settings"):
+        save_prices(updated_prices)
+        save_buttercream_misc(bc_misc)
+        save_misc(misc)
+        st.success("Settings saved.")
 
 # ---------- Streamlit config ----------
 
@@ -303,24 +492,199 @@ if page == "Home":
 6. Pay on collection  
         """
     )
-# ---------- Cost helpers (needed by costing pages) ----------
+# ---------- Page: Order Cupcakes (customer) ----------
 
-def get_cost_for_ingredient(key, scaled_amount, prices_section):
-    info = prices_section.get(key)
-    if not info:
-        return None
-    price = info.get("price")
-    size = info.get("size")
-    if not price or not size:
-        return None
-    return scaled_amount * (price / size)
+elif page == "Order Cupcakes":
+    st.subheader("Order cupcakes")
 
-def get_cost_from_misc_amount(amount_used, misc_item):
-    price = misc_item.get("price")
-    size = misc_item.get("size")
-    if not price or not size:
-        return None
-    return amount_used * (price / size)
+    st.markdown("### Standard flavours")
+    for i, item in enumerate(CUSTOMER_CUPCAKES):
+        name = item["name"]
+        price_per_6 = item["price_per_6"]
+
+        st.markdown(f"**{name}** — £{price_per_6:.2f} per 6")
+        cols = st.columns([1, 1])
+        with cols[0]:
+            boxes = st.number_input(
+                f"Boxes of 6 – {name}",
+                min_value=0,
+                max_value=20,
+                value=0,
+                step=1,
+                key=f"order_boxes_{i}"
+            )
+        with cols[1]:
+            if st.button(f"Add {name}", key=f"add_flavour_{i}"):
+                if boxes > 0:
+                    qty_cupcakes = boxes * 6
+                    total_price = boxes * price_per_6
+                    st.session_state["basket"].append({
+                        "name": name,
+                        "qty": qty_cupcakes,
+                        "price_per_6": price_per_6,
+                        "boxes": boxes,
+                        "total_price": total_price,
+                    })
+                    st.success(f"Added {boxes} box(es) of {name} to basket.")
+                else:
+                    st.warning("Please select at least 1 box.")
+
+    st.markdown("### Custom flavour")
+    custom_name = st.text_input("Custom flavour name")
+    custom_price_per_6 = st.number_input(
+        "Price per 6 (custom)",
+        min_value=0.0,
+        value=12.0,
+        step=0.5
+    )
+    custom_boxes = st.number_input(
+        "Boxes of 6 – custom",
+        min_value=0,
+        max_value=20,
+        value=0,
+        step=1
+    )
+    if st.button("Add custom flavour"):
+        if custom_name.strip() and custom_boxes > 0 and custom_price_per_6 > 0:
+            qty_cupcakes = custom_boxes * 6
+            total_price = custom_boxes * custom_price_per_6
+            st.session_state["basket"].append({
+                "name": custom_name.strip(),
+                "qty": qty_cupcakes,
+                "price_per_6": custom_price_per_6,
+                "boxes": custom_boxes,
+                "total_price": total_price,
+            })
+            st.success(f"Added {custom_boxes} box(es) of {custom_name} to basket.")
+        else:
+            st.warning("Please enter a name, price, and at least 1 box.")
+
+# ---------- Page: Basket (customer) ----------
+
+elif page == "Basket":
+    st.subheader("Your basket")
+
+    basket = st.session_state["basket"]
+    if not basket:
+        st.info("Your basket is empty. Go to 'Order Cupcakes' to add items.")
+    else:
+        rows = []
+        total = 0.0
+        for idx, item in enumerate(basket):
+            rows.append({
+                "Flavour": item["name"],
+                "Boxes of 6": item["boxes"],
+                "Cupcakes": item["qty"],
+                "Price per 6": f"£{item['price_per_6']:.2f}",
+                "Line total": f"£{item['total_price']:.2f}",
+            })
+            total += item["total_price"]
+
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.metric("Basket total", f"£{total:.2f}")
+
+        for idx, item in enumerate(basket):
+            if st.button(f"Remove {item['name']} (row {idx+1})", key=f"remove_{idx}"):
+                st.session_state["basket"].pop(idx)
+                st.rerun()
+
+# ---------- Page: Checkout (customer, JSON email) ----------
+
+elif page == "Checkout":
+    st.subheader("Checkout — payment on collection")
+
+    basket = st.session_state["basket"]
+    if not basket:
+        st.info("Your basket is empty. Go to 'Order Cupcakes' to add items.")
+    else:
+        total = sum(item["total_price"] for item in basket)
+        st.metric("Order total", f"£{total:.2f}")
+
+        st.markdown("### Your details")
+        name = st.text_input("Your name")
+        contact = st.text_input("Contact (phone or email)")
+        pickup_date = st.date_input("Pickup date")
+        pickup_time = st.time_input("Pickup time", value=time(12, 0))
+        notes = st.text_area("Notes (allergies, messages on box, etc.)", height=80)
+
+        st.markdown("### Order summary")
+        rows = []
+        for item in basket:
+            rows.append({
+                "Flavour": item["name"],
+                "Boxes of 6": item["boxes"],
+                "Cupcakes": item["qty"],
+                "Line total": f"£{item['total_price']:.2f}",
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+        if st.button("Place order (pay on collection)"):
+            if not name.strip() or not contact.strip():
+                st.warning("Please enter your name and contact details.")
+            else:
+                order_record = {
+                    "timestamp": datetime.now().isoformat(),
+                    "name": name.strip(),
+                    "contact": contact.strip(),
+                    "pickup_date": pickup_date.isoformat(),
+                    "pickup_time": pickup_time.isoformat(),
+                    "notes": notes.strip(),
+                    "items": basket,
+                    "total": total,
+                }
+
+                all_orders = load_orders()
+                all_orders.append(order_record)
+                save_orders(all_orders)
+                st.session_state["orders_cache"] = all_orders
+
+                success, msg = send_order_email(order_record)
+                if success:
+                    st.success("Order placed and email sent! Payment on collection. Thank you.")
+                else:
+                    st.warning(f"Order saved, but email failed: {msg}")
+
+                st.session_state["basket"] = []
+                st.balloons()
+
+# ---------- Admin: Cupcake costing ----------
+
+elif page == "Cupcake":
+    if not st.session_state["is_admin"]:
+        st.warning("Admin only.")
+    else:
+        st.subheader("Cupcake sponge costing")
+
+        rows = []
+        total_cost = 0.0
+        cupcake_prices = prices.get("cupcake", {})
+
+        for key, meta in CUPCAKE_RECIPE.items():
+            label = meta["label"]
+            base_amount = meta["amount"]
+            unit = meta["unit"]
+            scaled_amount = base_amount * multiplier
+
+            if unit == "tsp":
+                cost = None
+            else:
+                cost = get_cost_for_ingredient(key, scaled_amount, cupcake_prices)
+
+            if cost is None:
+                cost_display = "—"
+            else:
+                cost_display = f"£{cost:.2f}"
+                total_cost += cost
+
+            rows.append({
+                "Ingredient": label,
+                "Amount": f"{scaled_amount:.2f} {unit}",
+                "Cost": cost_display
+            })
+
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.metric("Cupcake subtotal", f"£{total_cost:.2f}")
+        st.session_state["cupcake_subtotal"] = total_cost
 
 # ---------- Admin: Buttercream costing ----------
 
@@ -510,218 +874,9 @@ elif page == "View Orders":
                 })
             st.dataframe(pd.DataFrame(item_rows), hide_index=True, use_container_width=True)
 
-# ---------- Admin: Settings ----------
+# ---------- Admin: Settings routing ----------
 
-def settings_page():
-    st.subheader("Settings")
-
-    updated_prices = prices.copy()
-    cupcake_prices = updated_prices.get("cupcake", {})
-    buttercream_prices = updated_prices.get("buttercream", {})
-
-    # --- Cupcake ingredient prices ---
-    st.markdown("### Cupcake ingredient prices")
-
-    for key, meta in CUPCAKE_RECIPE.items():
-        label = meta["label"]
-        existing = cupcake_prices.get(key, {})
-        default_unit = existing.get("unit", meta["unit"])
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            price = st.number_input(
-                f"{label} price (£)",
-                min_value=0.0,
-                value=float(existing.get("price", 0.0)),
-                step=0.10,
-                key=f"cupcake_price_{key}"
-            )
-
-        with col2:
-            size = st.number_input(
-                f"{label} package size",
-                min_value=0.0,
-                value=float(existing.get("size", 0.0)),
-                step=10.0,
-                key=f"cupcake_size_{key}"
-            )
-
-        with col3:
-            unit = st.selectbox(
-                f"{label} unit",
-                ["g", "ml", "count"],
-                index=["g", "ml", "count"].index(default_unit),
-                key=f"cupcake_unit_{key}"
-            )
-
-        cupcake_prices[key] = {"price": price, "size": size, "unit": unit}
-
-    updated_prices["cupcake"] = cupcake_prices
-
-    # --- Buttercream ingredient prices ---
-    st.markdown("### Buttercream ingredient prices")
-
-    for key, meta in BUTTERCREAM_RECIPE.items():
-        label = meta["label"]
-        existing = buttercream_prices.get(key, {})
-        default_unit = existing.get("unit", meta["unit"])
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            price = st.number_input(
-                f"{label} price (£)",
-                min_value=0.0,
-                value=float(existing.get("price", 0.0)),
-                step=0.10,
-                key=f"buttercream_price_{key}"
-            )
-
-        with col2:
-            size = st.number_input(
-                f"{label} package size",
-                min_value=0.0,
-                value=float(existing.get("size", 0.0)),
-                step=10.0,
-                key=f"buttercream_size_{key}"
-            )
-
-        with col3:
-            unit = st.selectbox(
-                f"{label} unit",
-                ["g", "ml", "count"],
-                index=["g", "ml", "count"].index(default_unit),
-                key=f"buttercream_unit_{key}"
-            )
-
-        buttercream_prices[key] = {"price": price, "size": size, "unit": unit}
-
-    updated_prices["buttercream"] = buttercream_prices
-
-    # --- Buttercream misc items ---
-    st.markdown("### Buttercream misc items")
-
-    bc_misc = buttercream_misc_items.copy()
-
-    for i, item in enumerate(bc_misc):
-        name = item["name"]
-        price = item["price"]
-        size = item["size"]
-        unit = item["unit"]
-
-        st.markdown(f"**Item {i+1}: {name}**")
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            name = st.text_input("Name", value=name, key=f"bc_misc_name_{i}")
-
-        with col2:
-            price = st.number_input(
-                "Price (£)",
-                min_value=0.0,
-                value=price,
-                step=0.10,
-                key=f"bc_misc_price_{i}"
-            )
-
-        with col3:
-            size = st.number_input(
-                "Size",
-                min_value=0.0,
-                value=size,
-                step=10.0,
-                key=f"bc_misc_size_{i}"
-            )
-
-        with col4:
-            unit = st.selectbox(
-                "Unit",
-                ["g", "ml", "count"],
-                index=["g", "ml", "count"].index(unit),
-                key=f"bc_misc_unit_{i}"
-            )
-
-        bc_misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
-
-        if st.button(f"Delete buttercream misc item {i+1}", key=f"bc_misc_delete_{i}"):
-            bc_misc.pop(i)
-            save_buttercream_misc(bc_misc)
-            st.rerun()
-            return
-
-    if st.button("Add buttercream misc item"):
-        bc_misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
-        save_buttercream_misc(bc_misc)
-        st.rerun()
-        return
-
-    # --- General misc items ---
-    st.markdown("### General misc items")
-
-    misc = misc_items.copy()
-
-    for i, item in enumerate(misc):
-        name = item["name"]
-        price = item["price"]
-        size = item["size"]
-        unit = item["unit"]
-
-        st.markdown(f"**Item {i+1}: {name}**")
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            name = st.text_input("Name", value=name, key=f"misc_name_{i}")
-
-        with col2:
-            price = st.number_input(
-                "Price (£)",
-                min_value=0.0,
-                value=price,
-                step=0.10,
-                key=f"misc_price_{i}"
-            )
-
-        with col3:
-            size = st.number_input(
-                "Size",
-                min_value=0.0,
-                value=size,
-                step=10.0,
-                key=f"misc_size_{i}"
-            )
-
-        with col4:
-            unit = st.selectbox(
-                "Unit",
-                ["g", "ml", "count"],
-                index=["g", "ml", "count"].index(unit),
-                key=f"misc_unit_{i}"
-            )
-
-        misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
-
-        if st.button(f"Delete misc item {i+1}", key=f"misc_delete_{i}"):
-            misc.pop(i)
-            save_misc(misc)
-            st.rerun()
-            return
-
-    if st.button("Add misc item"):
-        misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
-        save_misc(misc)
-        st.rerun()
-        return
-
-    if st.button("💾 Save all settings"):
-        save_prices(updated_prices)
-        save_buttercream_misc(bc_misc)
-        save_misc(misc)
-        st.success("Settings saved.")
-
-# ---------- Wire Settings page ----------
-
-if page == "Settings":
+elif page == "Settings":
     if not st.session_state["is_admin"]:
         st.warning("Admin only.")
     else:
