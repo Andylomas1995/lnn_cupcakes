@@ -51,6 +51,7 @@ def save_json(path: Path, data):
     ensure_data_dir()
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+
 # ---------- Loaders ----------
 
 def load_prices():
@@ -71,10 +72,8 @@ def load_prices():
     }
     return load_json(PRICES_FILE, default)
 
-
 def save_prices(prices: dict):
     save_json(PRICES_FILE, prices)
-
 
 def load_buttercream_misc():
     data = load_json(BUTTERCREAM_MISC_FILE, [])
@@ -92,10 +91,8 @@ def load_buttercream_misc():
         })
     return cleaned
 
-
 def save_buttercream_misc(items):
     save_json(BUTTERCREAM_MISC_FILE, items)
-
 
 def load_misc():
     data = load_json(MISC_FILE, [])
@@ -113,10 +110,8 @@ def load_misc():
         })
     return cleaned
 
-
 def save_misc(items):
     save_json(MISC_FILE, items)
-
 
 # ---------- Cost helpers ----------
 
@@ -124,16 +119,11 @@ def get_cost_for_ingredient(key, scaled_amount, prices_section):
     info = prices_section.get(key)
     if not info:
         return None
-
     price = info.get("price")
     size = info.get("size")
-    unit = info.get("unit", "g")
-
-    if price is None or not size:
+    if not price or not size:
         return None
-
     return scaled_amount * (price / size)
-
 
 def get_cost_from_misc_amount(amount_used, misc_item):
     price = misc_item.get("price")
@@ -141,7 +131,6 @@ def get_cost_from_misc_amount(amount_used, misc_item):
     if not price or not size:
         return None
     return amount_used * (price / size)
-
 
 # ---------- Streamlit config ----------
 
@@ -151,15 +140,16 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("🧁 L&N CupCakes")
-st.caption("Cupcake & buttercream batch scaler and cost calculator")
-
-
 # ---------- Shared state ----------
 
 prices = load_prices()
 buttercream_misc_items = load_buttercream_misc()
 misc_items = load_misc()
+
+page = st.sidebar.radio(
+    "Navigation",
+    ["Home", "Cupcake", "Buttercream", "Misc", "Total Cost", "Settings"]
+)
 
 batch_size = st.sidebar.selectbox(
     "Batch size (cupcakes)",
@@ -167,11 +157,6 @@ batch_size = st.sidebar.selectbox(
     index=0
 )
 multiplier = batch_size / 12
-
-page = st.sidebar.radio(
-    "Navigation",
-    ["Cupcake", "Buttercream", "Misc", "Total Cost", "Settings"]
-)
 
 for key in [
     "cupcake_subtotal",
@@ -181,9 +166,21 @@ for key in [
 ]:
     if key not in st.session_state:
         st.session_state[key] = 0.0
+
+# ---------- Page: Home ----------
+
+if page == "Home":
+    st.title("🧁 L&N CupCakes")
+    st.subheader("Welcome to your bakery costing app")
+    st.write(
+        "Use the menu on the left to navigate through cupcake costing, "
+        "buttercream calculations, misc items, and settings."
+    )
+    st.info("Choose a section from the sidebar to get started.")
+
 # ---------- Page: Cupcake ----------
 
-if page == "Cupcake":
+elif page == "Cupcake":
     st.subheader("Cupcake sponge")
 
     rows = []
@@ -197,7 +194,6 @@ if page == "Cupcake":
         unit = meta["unit"]
         scaled_amount = base_amount * multiplier
 
-        # tsp vanilla not costed
         if unit == "tsp":
             cost = None
         else:
@@ -216,10 +212,8 @@ if page == "Cupcake":
         })
 
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-
     st.metric("Cupcake subtotal", f"£{total_cost:.2f}")
     st.session_state["cupcake_subtotal"] = total_cost
-
 
 # ---------- Page: Buttercream ----------
 
@@ -237,7 +231,6 @@ elif page == "Buttercream":
         unit = meta["unit"]
         scaled_amount = base_amount * multiplier
 
-        # tbsp/tsp not costed
         if unit in ["tbsp", "tsp"]:
             cost = None
         else:
@@ -262,10 +255,10 @@ elif page == "Buttercream":
     misc_total = 0.0
 
     for i, item in enumerate(buttercream_misc_items):
-        name = item.get("name", f"Item {i+1}")
-        size = item.get("size", 0)
-        unit = item.get("unit", "g")
-        price = item.get("price", 0.0)
+        name = item["name"]
+        size = item["size"]
+        unit = item["unit"]
+        price = item["price"]
 
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
@@ -280,7 +273,7 @@ elif page == "Buttercream":
             )
         with col3:
             cost = get_cost_from_misc_amount(amount_used, item)
-            if cost is not None:
+            if cost:
                 misc_total += cost
                 st.markdown(f"Cost: **£{cost:.2f}**")
             else:
@@ -292,7 +285,6 @@ elif page == "Buttercream":
     st.session_state["buttercream_subtotal"] = total_cost
     st.session_state["buttercream_misc_subtotal"] = misc_total
 
-
 # ---------- Page: Misc ----------
 
 elif page == "Misc":
@@ -301,10 +293,10 @@ elif page == "Misc":
     misc_total = 0.0
 
     for i, item in enumerate(misc_items):
-        name = item.get("name", f"Item {i+1}")
-        size = item.get("size", 0)
-        unit = item.get("unit", "g")
-        price = item.get("price", 0.0)
+        name = item["name"]
+        size = item["size"]
+        unit = item["unit"]
+        price = item["price"]
 
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
@@ -319,7 +311,7 @@ elif page == "Misc":
             )
         with col3:
             cost = get_cost_from_misc_amount(amount_used, item)
-            if cost is not None:
+            if cost:
                 misc_total += cost
                 st.markdown(f"Cost: **£{cost:.2f}**")
             else:
@@ -327,7 +319,6 @@ elif page == "Misc":
 
     st.metric("Misc subtotal", f"£{misc_total:.2f}")
     st.session_state["misc_subtotal"] = misc_total
-
 
 # ---------- Page: Total Cost ----------
 
@@ -354,6 +345,7 @@ elif page == "Total Cost":
 
     st.metric("Grand total", f"£{total:.2f}")
     st.metric("Cost per cupcake", f"£{cost_per_cupcake:.2f}")
+
 # ---------- Page: Settings (Function Version) ----------
 
 def settings_page():
@@ -494,21 +486,18 @@ def settings_page():
 
         bc_misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
 
-        # DELETE BUTTON
         if st.button(f"Delete buttercream misc item {i+1}", key=f"bc_misc_delete_{i}"):
             bc_misc.pop(i)
             save_buttercream_misc(bc_misc)
             st.rerun()
             return
 
-    # ADD NEW BUTTERCREAM MISC ITEM
     if st.button("Add buttercream misc item"):
         bc_misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
         save_buttercream_misc(bc_misc)
         st.rerun()
         return
 
-    
     # ------------------------------
     # GENERAL MISC ITEMS
     # ------------------------------
@@ -517,70 +506,4 @@ def settings_page():
     misc = misc_items.copy()
 
     for i, item in enumerate(misc):
-        name = item["name"]
-        price = item["price"]
-        size = item["size"]
-        unit = item["unit"]
-
-        st.markdown(f"**Item {i+1}: {name}**")
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            name = st.text_input("Name", value=name, key=f"misc_name_{i}")
-
-        with col2:
-            price = st.number_input(
-                "Price (£)",
-                min_value=0.0,
-                value=price,
-                step=0.10,
-                key=f"misc_price_{i}"
-            )
-
-        with col3:
-            size = st.number_input(
-                "Size",
-                min_value=0.0,
-                value=size,
-                step=10.0,
-                key=f"misc_size_{i}"
-            )
-
-        with col4:
-            unit = st.selectbox(
-                "Unit",
-                ["g", "ml", "count"],
-                index=["g", "ml", "count"].index(unit),
-                key=f"misc_unit_{i}"
-            )
-
-        misc[i] = {"name": name, "price": price, "size": size, "unit": unit}
-
-        # DELETE BUTTON
-        if st.button(f"Delete misc item {i+1}", key=f"misc_delete_{i}"):
-            misc.pop(i)
-            save_misc(misc)
-            st.rerun()
-            return
-
-    # ADD NEW GENERAL MISC ITEM
-    if st.button("Add misc item"):
-        misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
-        save_misc(misc)
-        st.rerun()
-        return
-
-    # ------------------------------
-    # SAVE ALL SETTINGS
-    # ------------------------------
-    if st.button("💾 Save all settings"):
-        save_prices(updated_prices)
-        save_buttercream_misc(bc_misc)
-        save_misc(misc)
-        st.success("Settings saved.")
-
-
-# Call the function when needed
-if page == "Settings":
-    settings_page()
-
+        name =
