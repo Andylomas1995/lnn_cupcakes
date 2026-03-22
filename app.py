@@ -13,7 +13,7 @@ ADMIN_PASSWORD = "lncupcakes1922"
 EMAILJS_SERVICE_ID = "service_hprefxv"
 EMAILJS_TEMPLATE_ID = "template_8hx8mlg"
 EMAILJS_PUBLIC_KEY = "4UiWwc89li7cpo0gr"
-ORDER_TARGET_EMAIL = "andylomas79@gmail.com"
+ORDER_TARGET_EMAIL = "andylomas95@hotmail.co.uk"
 EMAIL_SUBJECT = "New Customer Order Received"
 
 # ---------- Paths ----------
@@ -289,7 +289,7 @@ if st.session_state["is_admin"]:
     )
     multiplier = batch_size / 12
 else:
-    multiplier = 1  # unused in customer mode
+    multiplier = 1
 
 # ---------- Page: Home ----------
 
@@ -442,7 +442,6 @@ elif page == "Checkout":
                 st.warning("Please enter your name and contact details.")
             else:
 
-                # Build clean order summary for EmailJS
                 order_summary = ""
                 for item in basket:
                     order_summary += (
@@ -461,13 +460,11 @@ elif page == "Checkout":
                     "total": total,
                 }
 
-                # Save locally
                 all_orders = load_orders()
                 all_orders.append(order_record)
                 save_orders(all_orders)
                 st.session_state["orders_cache"] = all_orders
 
-                # Send email with order_summary
                 success, msg = send_order_email(order_record, order_summary)
                 if success:
                     st.success("Order placed and email sent! Payment on collection. Thank you.")
