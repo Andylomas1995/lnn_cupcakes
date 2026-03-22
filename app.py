@@ -297,8 +297,7 @@ if page == "Home":
     st.subheader("Welcome")
     st.write(
         "Use this app to **order cupcakes** for collection. "
-        "Staff can log in (top right) to access costing tools."
-    )
+            )
 
     st.markdown("### How to order")
     st.markdown(
