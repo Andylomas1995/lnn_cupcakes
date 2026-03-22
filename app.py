@@ -11,7 +11,7 @@ import requests
 ADMIN_PASSWORD = "lncupcakes1922"
 
 EMAILJS_SERVICE_ID = "service_hprefxv"
-EMAILJS_TEMPLATE_ID = "template_5z7kfjg"
+EMAILJS_TEMPLATE_ID = "template_8hx8mlg"
 EMAILJS_PUBLIC_KEY = "4UiWwc89li7cpo0gr"
 ORDER_TARGET_EMAIL = "andylomas79@gmail.com"
 EMAIL_SUBJECT = "New Customer Order Received"
