@@ -11,7 +11,7 @@ import requests
 ADMIN_PASSWORD = "lncupcakes1922"
 
 EMAILJS_SERVICE_ID = "service_hprefxv"
-EMAILJS_TEMPLATE_ID = "template_8hx8mlg"
+EMAILJS_TEMPLATE_ID = "template_5z7kfjg"
 EMAILJS_PUBLIC_KEY = "4UiWwc89li7cpo0gr"
 ORDER_TARGET_EMAIL = "andylomas79@gmail.com"
 EMAIL_SUBJECT = "New Customer Order Received"
@@ -144,30 +144,22 @@ def load_orders():
 def save_orders(orders):
     save_json(ORDERS_FILE, orders)
 
-# ---------- Cost helpers ----------
-
-def get_cost_for_ingredient(key, scaled_amount, prices_section):
-    info = prices_section.get(key)
-    if not info:
-        return None
-    price = info.get("price")
-    size = info.get("size")
-    if not price or not size:
-        return None
-    return scaled_amount * (price / size)
-
-def get_cost_from_misc_amount(amount_used, misc_item):
-    price = misc_item.get("price")
-    size = misc_item.get("size")
-    if not price or not size:
-        return None
-    return amount_used * (price / size)
-
 # ---------- Email helper ----------
 
 def send_order_email(order):
     url = "https://api.emailjs.com/api/v1.0/email/send"
-    order_json = json.dumps(order["items"], indent=2)
+
+    # Pretty order structure for EmailJS
+    order_items = [
+        {
+            "name": item["name"],
+            "boxes": item["boxes"],
+            "qty": item["qty"],
+            "line_total": f"{item['total_price']:.2f}"
+        }
+        for item in order["items"]
+    ]
+
     template_params = {
         "to_email": ORDER_TARGET_EMAIL,
         "subject": EMAIL_SUBJECT,
@@ -175,16 +167,18 @@ def send_order_email(order):
         "contact": order["contact"],
         "pickup_date": order["pickup_date"],
         "pickup_time": order["pickup_time"],
-        "notes": order["notes"],
-        "order_json": order_json,
-        "total": f"£{order['total']:.2f}",
+        "notes": order["notes"] or "None",
+        "order_items": order_items,
+        "total": f"{order['total']:.2f}",
     }
+
     payload = {
         "service_id": EMAILJS_SERVICE_ID,
         "template_id": EMAILJS_TEMPLATE_ID,
         "user_id": EMAILJS_PUBLIC_KEY,
         "template_params": template_params,
     }
+
     try:
         resp = requests.post(url, json=payload, timeout=10)
         if resp.status_code == 200:
@@ -226,7 +220,7 @@ for key in [
     if key not in st.session_state:
         st.session_state[key] = 0.0
 
-# ---------- Admin login helper ----------
+# ---------- Admin login popover ----------
 
 def show_admin_login_inline():
     with st.popover("Admin Login", use_container_width=False):
@@ -240,7 +234,7 @@ def show_admin_login_inline():
             else:
                 st.error("Incorrect password.")
 
-# ---------- Top bar (title + tiny admin login) ----------
+# ---------- Top bar ----------
 
 col_title, col_admin = st.columns([4, 1])
 with col_title:
@@ -250,9 +244,7 @@ with col_admin:
     if st.session_state["is_admin"]:
         st.markdown("<div style='text-align:right; color: green;'>Admin</div>", unsafe_allow_html=True)
     else:
-        st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
         show_admin_login_inline()
-        st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------- Navigation (dynamic) ----------
 
@@ -279,227 +271,56 @@ else:
 
 page = st.sidebar.radio("Navigation", pages)
 
-batch_size = st.sidebar.selectbox(
-    "Batch size (cupcakes) for costing",
-    options=[12, 24, 36, 48, 60],
-    index=0
-)
-multiplier = batch_size / 12
+# ---------- Batch size (admin only) ----------
+
+if st.session_state["is_admin"]:
+    batch_size = st.sidebar.selectbox(
+        "Batch size (cupcakes) for costing",
+        options=[12, 24, 36, 48, 60],
+        index=0
+    )
+    multiplier = batch_size / 12
+else:
+    multiplier = 1  # unused in customer mode
 
 # ---------- Page: Home ----------
 
 if page == "Home":
     st.subheader("Welcome")
     st.write(
-        "You can use this app to **order cupcakes** for collection, "
-        "and (for staff) to manage **costing and orders**."
+        "Use this app to **order cupcakes** for collection. "
+        "Staff can log in (top right) to access costing tools."
     )
+
     st.markdown("### How to order")
     st.markdown(
         """
-1. Go to **Order Cupcakes** in the menu.  
-2. Choose your flavours and how many boxes of 6 you’d like.  
-3. Add them to your basket.  
-4. Go to **Basket** to review your order.  
-5. Go to **Checkout** to enter your details and pickup time.  
-6. You’ll pay **on collection**.
+1. Go to **Order Cupcakes**  
+2. Choose your flavours  
+3. Add them to your basket  
+4. Review your basket  
+5. Checkout with your details  
+6. Pay on collection  
         """
     )
-# ---------- Page: Order Cupcakes (customer) ----------
+# ---------- Cost helpers (needed by costing pages) ----------
 
-elif page == "Order Cupcakes":
-    st.subheader("Order cupcakes")
+def get_cost_for_ingredient(key, scaled_amount, prices_section):
+    info = prices_section.get(key)
+    if not info:
+        return None
+    price = info.get("price")
+    size = info.get("size")
+    if not price or not size:
+        return None
+    return scaled_amount * (price / size)
 
-    st.markdown("### Standard flavours")
-    for i, item in enumerate(CUSTOMER_CUPCAKES):
-        name = item["name"]
-        price_per_6 = item["price_per_6"]
-
-        st.markdown(f"**{name}** — £{price_per_6:.2f} per 6")
-        cols = st.columns([1, 1])
-        with cols[0]:
-            boxes = st.number_input(
-                f"Boxes of 6 – {name}",
-                min_value=0,
-                max_value=20,
-                value=0,
-                step=1,
-                key=f"order_boxes_{i}"
-            )
-        with cols[1]:
-            if st.button(f"Add {name}", key=f"add_flavour_{i}"):
-                if boxes > 0:
-                    qty_cupcakes = boxes * 6
-                    total_price = boxes * price_per_6
-                    st.session_state["basket"].append({
-                        "name": name,
-                        "qty": qty_cupcakes,
-                        "price_per_6": price_per_6,
-                        "boxes": boxes,
-                        "total_price": total_price,
-                    })
-                    st.success(f"Added {boxes} box(es) of {name} to basket.")
-                else:
-                    st.warning("Please select at least 1 box.")
-
-    st.markdown("### Custom flavour")
-    custom_name = st.text_input("Custom flavour name")
-    custom_price_per_6 = st.number_input(
-        "Price per 6 (custom)",
-        min_value=0.0,
-        value=12.0,
-        step=0.5
-    )
-    custom_boxes = st.number_input(
-        "Boxes of 6 – custom",
-        min_value=0,
-        max_value=20,
-        value=0,
-        step=1
-    )
-    if st.button("Add custom flavour"):
-        if custom_name.strip() and custom_boxes > 0 and custom_price_per_6 > 0:
-            qty_cupcakes = custom_boxes * 6
-            total_price = custom_boxes * custom_price_per_6
-            st.session_state["basket"].append({
-                "name": custom_name.strip(),
-                "qty": qty_cupcakes,
-                "price_per_6": custom_price_per_6,
-                "boxes": custom_boxes,
-                "total_price": total_price,
-            })
-            st.success(f"Added {custom_boxes} box(es) of {custom_name} to basket.")
-        else:
-            st.warning("Please enter a name, price, and at least 1 box.")
-
-# ---------- Page: Basket (customer) ----------
-
-elif page == "Basket":
-    st.subheader("Your basket")
-
-    basket = st.session_state["basket"]
-    if not basket:
-        st.info("Your basket is empty. Go to 'Order Cupcakes' to add items.")
-    else:
-        rows = []
-        total = 0.0
-        for idx, item in enumerate(basket):
-            rows.append({
-                "Flavour": item["name"],
-                "Boxes of 6": item["boxes"],
-                "Cupcakes": item["qty"],
-                "Price per 6": f"£{item['price_per_6']:.2f}",
-                "Line total": f"£{item['total_price']:.2f}",
-            })
-            total += item["total_price"]
-
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-        st.metric("Basket total", f"£{total:.2f}")
-
-        for idx, item in enumerate(basket):
-            if st.button(f"Remove {item['name']} (row {idx+1})", key=f"remove_{idx}"):
-                st.session_state["basket"].pop(idx)
-                st.rerun()
-
-# ---------- Page: Checkout (customer, with email) ----------
-
-elif page == "Checkout":
-    st.subheader("Checkout — payment on collection")
-
-    basket = st.session_state["basket"]
-    if not basket:
-        st.info("Your basket is empty. Go to 'Order Cupcakes' to add items.")
-    else:
-        total = sum(item["total_price"] for item in basket)
-        st.metric("Order total", f"£{total:.2f}")
-
-        st.markdown("### Your details")
-        name = st.text_input("Your name")
-        contact = st.text_input("Contact (phone or email)")
-        pickup_date = st.date_input("Pickup date")
-        pickup_time = st.time_input("Pickup time", value=time(12, 0))
-        notes = st.text_area("Notes (allergies, messages on box, etc.)", height=80)
-
-        st.markdown("### Order summary")
-        rows = []
-        for item in basket:
-            rows.append({
-                "Flavour": item["name"],
-                "Boxes of 6": item["boxes"],
-                "Cupcakes": item["qty"],
-                "Line total": f"£{item['total_price']:.2f}",
-            })
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-
-        if st.button("Place order (pay on collection)"):
-            if not name.strip() or not contact.strip():
-                st.warning("Please enter your name and contact details.")
-            else:
-                order_record = {
-                    "timestamp": datetime.now().isoformat(),
-                    "name": name.strip(),
-                    "contact": contact.strip(),
-                    "pickup_date": pickup_date.isoformat(),
-                    "pickup_time": pickup_time.isoformat(),
-                    "notes": notes.strip(),
-                    "items": basket,
-                    "total": total,
-                }
-
-                # Save locally
-                all_orders = load_orders()
-                all_orders.append(order_record)
-                save_orders(all_orders)
-                st.session_state["orders_cache"] = all_orders
-
-                # Send email
-                success, msg = send_order_email(order_record)
-                if success:
-                    st.success("Order placed and email sent! Payment on collection. Thank you.")
-                else:
-                    st.warning(f"Order saved, but email failed: {msg}")
-
-                st.session_state["basket"] = []
-                st.balloons()
-
-# ---------- Admin: Cupcake costing ----------
-
-elif page == "Cupcake":
-    if not st.session_state["is_admin"]:
-        st.warning("Admin only.")
-    else:
-        st.subheader("Cupcake sponge costing")
-
-        rows = []
-        total_cost = 0.0
-        cupcake_prices = prices.get("cupcake", {})
-
-        for key, meta in CUPCAKE_RECIPE.items():
-            label = meta["label"]
-            base_amount = meta["amount"]
-            unit = meta["unit"]
-            scaled_amount = base_amount * multiplier
-
-            if unit == "tsp":
-                cost = None
-            else:
-                cost = get_cost_for_ingredient(key, scaled_amount, cupcake_prices)
-
-            if cost is None:
-                cost_display = "—"
-            else:
-                cost_display = f"£{cost:.2f}"
-                total_cost += cost
-
-            rows.append({
-                "Ingredient": label,
-                "Amount": f"{scaled_amount:.2f} {unit}",
-                "Cost": cost_display
-            })
-
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-        st.metric("Cupcake subtotal", f"£{total_cost:.2f}")
-        st.session_state["cupcake_subtotal"] = total_cost
+def get_cost_from_misc_amount(amount_used, misc_item):
+    price = misc_item.get("price")
+    size = misc_item.get("size")
+    if not price or not size:
+        return None
+    return amount_used * (price / size)
 
 # ---------- Admin: Buttercream costing ----------
 
@@ -624,7 +445,7 @@ elif page == "Total Cost":
         misc_sub = st.session_state["misc_subtotal"]
 
         total = cupcake_sub + buttercream_sub + buttercream_misc_sub + misc_sub
-        cost_per_cupcake = total / batch_size if batch_size else 0
+        cost_per_cupcake = total / batch_size if st.session_state["is_admin"] and batch_size else 0
 
         rows = [
             {"Section": "Cupcakes", "Subtotal": f"£{cupcake_sub:.2f}"},
@@ -689,7 +510,7 @@ elif page == "View Orders":
                 })
             st.dataframe(pd.DataFrame(item_rows), hide_index=True, use_container_width=True)
 
-# ---------- Admin: Settings (Function Version) ----------
+# ---------- Admin: Settings ----------
 
 def settings_page():
     st.subheader("Settings")
@@ -698,9 +519,7 @@ def settings_page():
     cupcake_prices = updated_prices.get("cupcake", {})
     buttercream_prices = updated_prices.get("buttercream", {})
 
-    # ------------------------------
-    # CUPCAKE INGREDIENT PRICES
-    # ------------------------------
+    # --- Cupcake ingredient prices ---
     st.markdown("### Cupcake ingredient prices")
 
     for key, meta in CUPCAKE_RECIPE.items():
@@ -740,9 +559,7 @@ def settings_page():
 
     updated_prices["cupcake"] = cupcake_prices
 
-    # ------------------------------
-    # BUTTERCREAM INGREDIENT PRICES
-    # ------------------------------
+    # --- Buttercream ingredient prices ---
     st.markdown("### Buttercream ingredient prices")
 
     for key, meta in BUTTERCREAM_RECIPE.items():
@@ -782,9 +599,7 @@ def settings_page():
 
     updated_prices["buttercream"] = buttercream_prices
 
-    # ------------------------------
-    # BUTTERCREAM MISC ITEMS
-    # ------------------------------
+    # --- Buttercream misc items ---
     st.markdown("### Buttercream misc items")
 
     bc_misc = buttercream_misc_items.copy()
@@ -841,9 +656,7 @@ def settings_page():
         st.rerun()
         return
 
-    # ------------------------------
-    # GENERAL MISC ITEMS
-    # ------------------------------
+    # --- General misc items ---
     st.markdown("### General misc items")
 
     misc = misc_items.copy()
