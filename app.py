@@ -498,14 +498,14 @@ def settings_page():
         if st.button(f"Delete buttercream misc item {i+1}", key=f"bc_misc_delete_{i}"):
             bc_misc.pop(i)
             save_buttercream_misc(bc_misc)
-            st.experimental_rerun()
+            st.rerun()
             return
 
     # ADD NEW BUTTERCREAM MISC ITEM
     if st.button("Add buttercream misc item"):
         bc_misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
         save_buttercream_misc(bc_misc)
-        st.experimental_rerun()
+        st.rerun()
         return
 
     
@@ -560,14 +560,14 @@ def settings_page():
         if st.button(f"Delete misc item {i+1}", key=f"misc_delete_{i}"):
             misc.pop(i)
             save_misc(misc)
-            st.experimental_rerun()
+            st.rerun()
             return
 
     # ADD NEW GENERAL MISC ITEM
     if st.button("Add misc item"):
         misc.append({"name": "New item", "price": 0.0, "size": 0.0, "unit": "g"})
         save_misc(misc)
-        st.experimental_rerun()
+        st.rerun()
         return
 
     # ------------------------------
