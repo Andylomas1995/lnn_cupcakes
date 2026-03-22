@@ -1,1 +1,10 @@
+{
+  "flour":   { "price": 1.20, "size": 1000, "unit": "g" },
+  "sugar":   { "price": 0.90, "size": 1000, "unit": "g" },
+  "butter":  { "price": 2.00, "size": 250,  "unit": "g" },
+  "eggs":    { "price": 2.00, "size": 12,   "unit": "count" },
+  "vanilla": { "price": 3.00, "size": 50,   "unit": "ml" },
+  "milk":    { "price": 1.00, "size": 1000, "unit": "ml" },
+  "baking_powder": { "price": 0.80, "size": 100, "unit": "g" }
+}
 
