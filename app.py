@@ -508,6 +508,7 @@ def settings_page():
         st.experimental_rerun()
         return
 
+    
     # ------------------------------
     # GENERAL MISC ITEMS
     # ------------------------------
