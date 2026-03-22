@@ -202,14 +202,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("🧁 L&N CupCakes")
-st.caption("Customer ordering + bakery costing")
-
 # ---------- Shared state ----------
-
-prices = load_prices()
-buttercream_misc_items = load_buttercream_misc()
-misc_items = load_misc()
 
 if "is_admin" not in st.session_state:
     st.session_state["is_admin"] = False
@@ -219,6 +212,10 @@ if "basket" not in st.session_state:
 
 if "orders_cache" not in st.session_state:
     st.session_state["orders_cache"] = load_orders()
+
+prices = load_prices()
+buttercream_misc_items = load_buttercream_misc()
+misc_items = load_misc()
 
 for key in [
     "cupcake_subtotal",
@@ -231,22 +228,36 @@ for key in [
 
 # ---------- Admin login helper ----------
 
-def show_admin_login():
-    st.subheader("Admin login")
-    pwd = st.text_input("Password", type="password")
-    if st.button("Log in"):
-        if pwd == ADMIN_PASSWORD:
-            st.session_state["is_admin"] = True
-            st.success("Logged in as admin.")
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
+def show_admin_login_inline():
+    with st.popover("Admin Login", use_container_width=False):
+        st.markdown("### Admin login")
+        pwd = st.text_input("Password", type="password", key="admin_pwd")
+        if st.button("Log in", key="admin_login_btn"):
+            if pwd == ADMIN_PASSWORD:
+                st.session_state["is_admin"] = True
+                st.success("Admin mode active.")
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
 
-# ---------- Navigation ----------
+# ---------- Top bar (title + tiny admin login) ----------
 
-page = st.sidebar.radio(
-    "Navigation",
-    [
+col_title, col_admin = st.columns([4, 1])
+with col_title:
+    st.title("🧁 L&N CupCakes")
+    st.caption("Customer ordering + bakery costing")
+with col_admin:
+    if st.session_state["is_admin"]:
+        st.markdown("<div style='text-align:right; color: green;'>Admin</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
+        show_admin_login_inline()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------- Navigation (dynamic) ----------
+
+if st.session_state["is_admin"]:
+    pages = [
         "Home",
         "Order Cupcakes",
         "Basket",
@@ -258,7 +269,15 @@ page = st.sidebar.radio(
         "View Orders",
         "Settings",
     ]
-)
+else:
+    pages = [
+        "Home",
+        "Order Cupcakes",
+        "Basket",
+        "Checkout",
+    ]
+
+page = st.sidebar.radio("Navigation", pages)
 
 batch_size = st.sidebar.selectbox(
     "Batch size (cupcakes) for costing",
@@ -272,14 +291,20 @@ multiplier = batch_size / 12
 if page == "Home":
     st.subheader("Welcome")
     st.write(
-        "Use the menu on the left to either **place an order** "
-        "or, if you're an admin, access the **costing tools**."
+        "You can use this app to **order cupcakes** for collection, "
+        "and (for staff) to manage **costing and orders**."
     )
-    if not st.session_state["is_admin"]:
-        with st.expander("Admin login"):
-            show_admin_login()
-    else:
-        st.success("Admin mode active.")
+    st.markdown("### How to order")
+    st.markdown(
+        """
+1. Go to **Order Cupcakes** in the menu.  
+2. Choose your flavours and how many boxes of 6 you’d like.  
+3. Add them to your basket.  
+4. Go to **Basket** to review your order.  
+5. Go to **Checkout** to enter your details and pickup time.  
+6. You’ll pay **on collection**.
+        """
+    )
 # ---------- Page: Order Cupcakes (customer) ----------
 
 elif page == "Order Cupcakes":
@@ -441,7 +466,7 @@ elif page == "Checkout":
 
 elif page == "Cupcake":
     if not st.session_state["is_admin"]:
-        show_admin_login()
+        st.warning("Admin only.")
     else:
         st.subheader("Cupcake sponge costing")
 
@@ -480,7 +505,7 @@ elif page == "Cupcake":
 
 elif page == "Buttercream":
     if not st.session_state["is_admin"]:
-        show_admin_login()
+        st.warning("Admin only.")
     else:
         st.subheader("Buttercream costing")
 
@@ -551,7 +576,7 @@ elif page == "Buttercream":
 
 elif page == "Misc":
     if not st.session_state["is_admin"]:
-        show_admin_login()
+        st.warning("Admin only.")
     else:
         st.subheader("Miscellaneous costs")
 
@@ -589,7 +614,7 @@ elif page == "Misc":
 
 elif page == "Total Cost":
     if not st.session_state["is_admin"]:
-        show_admin_login()
+        st.warning("Admin only.")
     else:
         st.subheader("Total cost summary")
 
@@ -617,7 +642,7 @@ elif page == "Total Cost":
 
 elif page == "View Orders":
     if not st.session_state["is_admin"]:
-        show_admin_login()
+        st.warning("Admin only.")
     else:
         st.subheader("All customer orders")
 
@@ -885,6 +910,6 @@ def settings_page():
 
 if page == "Settings":
     if not st.session_state["is_admin"]:
-        show_admin_login()
+        st.warning("Admin only.")
     else:
         settings_page()
